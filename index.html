@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Démo consentie: localisation + caméra</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 10px 14px; border-radius: 6px; border: 1px solid #333; background: #f6f6f6; cursor: pointer; }
+    video { width: 100%; max-width: 380px; background: #000; border-radius: 8px; }
+    pre { background:#f7f7f7; padding:12px; border-radius:6px; overflow:auto; }
+    .ok { color: #0a7; } .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Démo consentie: localisation et caméra (ton appareil)</h1>
+
+  <div class="card">
+    <p><strong>Finalité:</strong> démonstration pédagogique des permissions web. En cliquant, tu autorises l’accès <em>temporaire</em> à ta localisation et à ta caméra sur CE site. Aucune donnée n’est partagée sans action explicite.</p>
+    <ul>
+      <li><strong>Données:</strong> latitude, longitude, précision, horodatage; flux vidéo local.</li>
+      <li><strong>Transparence:</strong> tu peux révoquer les permissions dans ton navigateur à tout moment.</li>
+    </ul>
+    <button id="askPerms">Demander permissions</button>
+    <span id="permStatus"></span>
+  </div>
+
+  <div class="card">
+    <h2>Caméra (aperçu local)</h2>
+    <video id="video" playsinline autoplay muted></video><br/>
+    <button id="stopCam">Arrêter la caméra</button>
+    <div id="camStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Localisation</h2>
+    <button id="getLocation">Obtenir la position</button>
+    <div id="locStatus"></div>
+    <pre id="locData"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Journal local</h2>
+    <pre id="log"></pre>
+  </div>
+
+  <script>
+    const log = (msg) => {
+      const el = document.getElementById('log');
+      const ts = new Date().toISOString();
+      el.textContent += `[${ts}] ${msg}\n`;
+    };
+
+    // 1) Demande de permissions explicites
+    document.getElementById('askPerms').addEventListener('click', async () => {
+      const permStatus = document.getElementById('permStatus');
+      try {
+        // Caméra: demande via getUserMedia (déclenche le pop-up)
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        permStatus.innerHTML = '<span class="ok">Caméra: permission accordée</span>';
+        log('Caméra: permission accordée');
+      } catch (e) {
+        permStatus.innerHTML = '<span class="err">Caméra: permission refusée (' + e.message + ')</span>';
+        log('Caméra: permission refusée');
+      }
+
+      // Géolocalisation: le pop-up apparaît au moment de l’appel (voir bouton dédié)
+      if (!('geolocation' in navigator)) {
+        permStatus.innerHTML += ' | <span class="err">Géolocalisation indisponible</span>';
+      } else {
+        permStatus.innerHTML += ' | <span class="ok">Géolocalisation disponible</span>';
+      }
+    });
+
+    // 2) Aperçu caméra (sans envoi)
+    let mediaStream;
+    async function startCamera() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        const video = document.getElementById('video');
+        video.srcObject = mediaStream;
+        document.getElementById('camStatus').innerHTML = '<span class="ok">Caméra active (aperçu local)</span>';
+        log('Caméra: démarrée');
+      } catch (e) {
+        document.getElementById('camStatus').innerHTML = '<span class="err">Impossible d’activer la caméra: ' + e.message + '</span>';
+        log('Caméra: erreur ' + e.message);
+      }
+    }
+    startCamera();
+
+    document.getElementById('stopCam').addEventListener('click', () => {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        document.getElementById('camStatus').innerHTML = '<span class="ok">Caméra arrêtée</span>';
+        log('Caméra: arrêtée');
+      }
+    });
+
+    // 3) Localisation (lat/lng + précision)
+    document.getElementById('getLocation').addEventListener('click', () => {
+      const locStatus = document.getElementById('locStatus');
+      const locData = document.getElementById('locData');
+
+      if (!('geolocation' in navigator)) {
+        locStatus.innerHTML = '<span class="err">Géolocalisation non supportée</span>';
+        return;
+      }
+
+      locStatus.textContent = 'Demande de position...';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const c = pos.coords;
+          const snapshot = {
+            latitude: c.latitude,
+            longitude: c.longitude,
+            accuracy_m: c.accuracy,
+            altitude_m: c.altitude,
+            speed_mps: c.speed,
+            heading_deg: c.heading,
+            timestamp_ms: pos.timestamp
+          };
+          locStatus.innerHTML = '<span class="ok">Position obtenue</span>';
+          locData.textContent = JSON.stringify(snapshot, null, 2);
+          log(`Localisation: lat=${c.latitude}, lng=${c.longitude}, acc=${c.accuracy}m`);
+        },
+        (err) => {
+          locStatus.innerHTML = '<span class="err">Erreur localisation: ' + err.message + '</span>';
+          log('Localisation: erreur ' + err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  </script>
+</body>
+</html>
